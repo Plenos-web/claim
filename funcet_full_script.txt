@@ -1,0 +1,202 @@
+===========================
+Funcet - Reminder App (All Scripts)
+===========================
+
+-----------------------------------
+1️⃣ MainActivity.java
+-----------------------------------
+package com.example.reminderapp;
+
+import android.app.AlarmManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.media.MediaPlayer;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.widget.Button;
+import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.NotificationCompat;
+import java.util.Calendar;
+
+public class MainActivity extends AppCompatActivity {
+    private static final int ALARM_REQUEST_CODE = 100;
+    private static final String PREFS_NAME = "ReminderPrefs";
+    private static final String SOUND_URI_KEY = "sound_uri";
+
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        Button stopButton = findViewById(R.id.btn_stop);
+        Button changeSoundButton = findViewById(R.id.btn_change_sound);
+
+        createNotificationChannel();
+        scheduleRepeatingAlarm();
+
+        stopButton.setOnClickListener(v -> cancelAlarm());
+        changeSoundButton.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("audio/*");
+            startActivityForResult(intent, 200);
+        });
+    }
+
+    private void scheduleRepeatingAlarm() {
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        Intent intent = new Intent(this, AlarmReceiver.class);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, ALARM_REQUEST_CODE, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.HOUR, 3); // 3 jam sekali
+
+        if (alarmManager != null) {
+            alarmManager.setRepeating(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(),
+                    3 * 60 * 60 * 1000, pendingIntent);
+        }
+    }
+
+    private void cancelAlarm() {
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        Intent intent = new Intent(this, AlarmReceiver.class);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, ALARM_REQUEST_CODE, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        if (alarmManager != null) {
+            alarmManager.cancel(pendingIntent);
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    "reminder_channel", "Reminder Notifications",
+                    NotificationManager.IMPORTANCE_HIGH);
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) manager.createNotificationChannel(channel);
+        }
+    }
+
+    public static class AlarmReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            String soundUriString = prefs.getString(SOUND_URI_KEY, null);
+            Uri soundUri = soundUriString != null ? Uri.parse(soundUriString) : Settings.System.DEFAULT_ALARM_ALERT_URI;
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "reminder_channel")
+                    .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                    .setContentTitle("Waktunya claim!")
+                    .setContentText("Sudah 3 jam berlalu, waktunya claim lagi!")
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setSound(soundUri)
+                    .setAutoCancel(true);
+
+            NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null) manager.notify((int) System.currentTimeMillis(), builder.build());
+
+            MediaPlayer player = MediaPlayer.create(context, soundUri);
+            if (player != null) player.start();
+        }
+    }
+}
+
+-----------------------------------
+2️⃣ AndroidManifest.xml
+-----------------------------------
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.reminderapp">
+
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <application
+        android:allowBackup="true"
+        android:label="Funcet"
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+        <activity android:name=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <receiver android:name=".MainActivity$AlarmReceiver" android:exported="true" />
+    </application>
+</manifest>
+
+-----------------------------------
+3️⃣ activity_main.xml
+-----------------------------------
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="24dp">
+
+    <TextView
+        android:text="Alarm aktif setiap 3 jam
+Waktunya claim!"
+        android:textSize="18sp"
+        android:textColor="@android:color/white"
+        android:gravity="center" />
+
+    <Button
+        android:id="@+id/btn_stop"
+        android:text="STOP"
+        android:layout_marginTop="24dp"
+        android:padding="16dp" />
+
+    <Button
+        android:id="@+id/btn_change_sound"
+        android:text="GANTI SUARA"
+        android:layout_marginTop="16dp"
+        android:padding="16dp" />
+</LinearLayout>
+
+-----------------------------------
+4️⃣ .github/workflows/android-build.yml
+-----------------------------------
+name: Build Funcet APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission for Gradle
+        run: chmod +x gradlew
+
+      - name: Build APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Funcet-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
